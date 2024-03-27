@@ -1,38 +1,25 @@
-require('dotenv').config();
-FgRed = "\x1b[31m"
-FgGreen = "\x1b[32m"
-FgReset = "\x1b[0m"
+require('dotenv').config()
 const fs = require("fs");
 const cookieParser = require('cookie-parser')
 const express = require("express");
 const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
-const morgan = require("morgan");
-const axios = require("axios").default;
-const Goal = require("./models/Goal");
 const app = express();
 const verifyJWT = require('./middleware/verifyJWT');
-// required for registration
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
 const User = require('./models/userMode');
-const TrySchema = require('./models/trySchemas');
 const mySchemas = require('./models/schemas');
 const auth = require('./auth');
 const credentials = require('./middleware/credentials');
 const corsOptions = require('./config/corsOptions');
-const connectDB = require('./config/dbConn')
-// Could be a possible error with new Header
 const cors = require("cors");
+const connectDB = require('./config/dbConn')
 const PORT = process.env.PORT;
-// Handle options credentials check - before CORS!
-// and fetch cookies credentials requirement
+
+console.log(process.env.DATABASE_URI)
+
 connectDB()
-// Check how it works exactly. Files in case are corsOptions, allowedOrigins, credentials
 app.use(credentials);
-
 app.use(cors(corsOptions));
-
 
 //app.use(morgan("combined", { stream: accessLogStream }));
 
@@ -91,36 +78,11 @@ app.use('/login',require('./routes/login'));
 app.use('/refresh', require('./routes/refresh'));
 app.use('/logout', require('./routes/logout'));
 
+//This use verifyJWT
+app.use('/favorites',require('./routes/favorites'));
+app.use('/user',require('./routes/user'));
 
 
-app.post("/goals", async (req, res) => {
-  console.log("TRYING TO STORE GOAL");
-  const goalText = req.body.text;
-
-  if (!goalText || goalText.trim().length === 0) {
-    console.log("INVALID INPUT - NO TEXT");
-    return res.status(422).json({ message: "Invalid goal text." });
-  }
-
-  const goal = new Goal({
-    text: goalText,
-  });
-
-  try {
-    await goal.save();
-    res
-      .status(201)
-      .json({ message: "Goal save•••••••••••••••d", goal: { id: goal.id, text: goalText } });
-    console.log("STORED NEW GOAL");
-  } catch (err) {
-    console.error("ERROR FETCHING GOALS");
-    console.error(err.message);
-    res.status(500).json({ message: "Failed to save goal." });
-  }
-});
-
-
-// Initialization api. Adds genre to setup Database.
 app.post("/genre", async (req, res) => {
   console.log("TRYING TO STORE Genre");
   const postGenre = req.body.name;
@@ -137,8 +99,8 @@ app.post("/genre", async (req, res) => {
   try {
     await genre.save();
     res
-      .status(201)
-      .json({ message: "Genre saved", genre: { id: genre.id, name: postGenre } });
+        .status(201)
+        .json({ message: "Genre saved", genre: { id: genre.id, name: postGenre } });
     console.log("STORED NEW Genre");
     console.log(genre);
   } catch (err) {
@@ -150,7 +112,7 @@ app.post("/genre", async (req, res) => {
 
 
 
-// Initialization api. Adds Movies to Database. 
+// Initialization api. Adds Movies to Database.
 app.post("/addmovie", async (req, res) => {
   console.log("TRYING TO STORE Movie");
   const postMovie = req.body.movieData;
@@ -177,18 +139,18 @@ app.post("/addmovie", async (req, res) => {
     extract:postMovie.extract,
     year: postMovie.year,
     entryDate:postMovie.entryDate,
-    genre: tempGenres, 
+    genre: tempGenres,
     cast:postMovie.cast,
 
   });
-console.log(movie)
+  console.log(movie)
   try {
     await movie.save();
     res
-      .status(201)
-      .json({ message: "Movie saved", movie: { id: movie.id , title: movie.title } });
+        .status(201)
+        .json({ message: "Movie saved", movie: { id: movie.id , title: movie.title } });
     console.log("STORED NEW Movie");
-    
+
   } catch (err) {
     console.error("ERROR FETCHING Movie");
     console.error(err.message);
@@ -197,196 +159,46 @@ console.log(movie)
 });
 
 
-
 app.use(verifyJWT)
 /**====================================End of Authentication===========================**/
-// app.get("/movies", movies);
-app.use('/movies', require('./routes/movies'));
-app.get("/user",async (req,res)=>{
-  // console.log(req)
-  // should add await i believe
-  console.log('Get user details')
-  User.findOne({$or: [{ email: req.user.userEmail }, {username: req.user.userName}]})
-  .exec(function(err, result) {
-    if (err) {
-      // Handle error
-      res.status(500).json({message: 'Failed to get favorites.'})
-    } else {
-      // Access the populated favorites with genre information
-      console.log("This is the user document",result)
-      res.status(200).json(result)
-    }
-  });
-})
+app.get("/movies", async (req, res) => {
+  console.log(`Method ${req.method}, endpoint /movies`)
+  try {
+    const movieData = await mySchemas.movies.find().populate('genre');
+    return res.status(200).json({
+      movies: movieData.map((movie) => ({
+        id: movie.id,
+        title: movie.title,
+        thumbnail:movie.thumbnail,
+        genre: movie.genre, 
+        extract: movie.extract, 
+        year: movie.year, 
+        cast: movie.cast
+        
 
-
-app.get("/favorites", async (req, res) => {
-  console.log("TRYING TO get Favorites to user populate('favorites')");
-  // console.log(req)
-  User.findOne({_id: req.user.userId}).populate({
-    path: 'favorites',
-    populate: {
-      path: 'genre',
-    }
-  })
-  .exec(function(err, result) {
-    if (err) {
-      // Handle error
-      res.status(500).json({message: 'Failed to get favorites.'})
-    } else {
-      // Access the populated favorites with genre information
-      console.log("Before attempting to add to favorites",result)
-      res.status(200).json(result.favorites)
-    }
-  });
-    // .then((result)=>{
-    //     console.log("Before attempting to add to favorites",result.favorites[0].genre)
-    //     res.status(200).json(result.favorites)
-    // }).catch(()=>{
-    //     res.status(500).json({message: 'Failed to get favorites.'})
-    // })
-
+      })),
+    });
+    //console.log(movieData)
+  } catch (err) {
+    console.error("ERROR FETCHING Movies");
+    console.error(err.message);
+    return res.status(500).json({ message: "Failed to load goals." });
+  }
 });
 
 
-app.post("/updateUserDetails", async (req,res)=>{
-  // (More efficient) 2. Check if the data have changed (might do it on the frontend)
 
-  
-  const {firstName, lastName, birthday,email} = req.body.dataObj;
+
+//test api
+app.get("/favoritesArray", async (req,res)=>{
   const user = await User.findOne({_id: req.user.userId});
   console.log(user)
-  // Should not be allowed any requests. Fix from frontend
-  let areTheSame = 0;
-  user.firstName != firstName ? 
-    (user.firstName = firstName): 
-    areTheSame++
-  user.lastName != lastName ? 
-    (user.lastName = lastName): 
-    areTheSame++
-    
-  const prevEmail = user.email;
-  user.email != email ? 
-    (user.email = email): 
-    areTheSame++
-  
-  user.birthday != birthday ? 
-    (user.birthday = birthday): 
-    areTheSame++
-  
-  if(areTheSame===4){
-    res.status(500).send({
-      message: "You didn't change any information.",
-      prevEmail:prevEmail,
-    })
-  }else{
-    user.save()
-    .then((result)=>{
-      console.log(result);
-      res.status(200).send({
-        message:"Successfully updated details!"
-        
-      })
-    }).catch((error)=>{
-
-      // Try throw error or if condition on frontend
-      res.status(500).send({
-        message: `Error code ${error.code}. Email already exists.`,
-        prevEmail:prevEmail,
-        error
-      })
-    })
-
-  }
+  return res.status(200).json(user?.favorites);
 })
 
 
-app.post('/updatePassword',async (req,res)=>{
-  const userID= req.user.userId; 
-  const {currentPassword,newPassword} = req.body.dataObj;
-  console.log(currentPassword,newPassword)
-  console.log(currentPassword,newPassword, userID)
-  await User.findOne({_id:userID}).then((user)=>{
-    bcrypt.compare(currentPassword, user.password)
-      .then(( passwordCheck)=>{
-        if(!passwordCheck){
-          return res.status(400).send({
-            message:'Passwords do not match'
-          });
-        }
-        if(currentPassword === newPassword){
-          return res.status(400).send({
-            message:'Current and new password cant be the same'
-          })
-        }
-        bcrypt
-        .hash(newPassword, 10)
-        .then((hashedPassword)=>{
-          user.password = hashedPassword;
-          console.log(user)
-          user.save().then(result=>{
-            res.status(200).json({
-              message:"Successfully updated password"
-            })
-          })
-        })
-  }).catch((err)=>{
-    console.error(err)
-  })
-
-
-})
-})
-
-
-app.post("/favorites", async (req, res) => {
-  console.log("TRYING TO add favorites to user");
-  const movieTitle = req.body.title || "";  
-  if (!movieTitle || movieTitle.trim().length === 0) {
-    console.log("INVALID INPUT - NO TEXT");
-    return res.status(422).json({ message: "Invalid goal text." });
-  }
-  console.log("title of movie trying to add ",movieTitle )
-  const foundMovie = await mySchemas.movies.findOne({title:movieTitle}).exec();
-  if(!foundMovie){
-    console.log(`No movie with title ${movieTitle}.` )
-    return res.status(422).json({ message: `No movie with title ${movieTitle}.` }); //added the return keyword. 10/01
-  }
-  console.log(foundMovie)
-  console.log(req.user);
-  const user = await User.findOne({_id: req.user.userId});
-  console.log("Before attempting to add to favorites",user)
-  //added it 10/01
-  if (!user) {
-    console.log("User not found");
-    return res.status(404).json({ message: "User not found." });
-  }
-  //crashes if the movie doesn't exist
-  if(user.favorites.includes(foundMovie._id)){
-    console.log(`${movieTitle} already exists in Favorites`);
-    res.status(422).json({ message: `${movieTitle} already exists in favorites.` });
-  }else{
-      user.favorites.push(foundMovie._id)
-      console.log(user)
-  user.save()
-    .then((result)=>{
-      console.log(result);
-      res.status(200).send({
-        message:`Successfully saved ${movieTitle} to favorites`
-      })
-    }).catch((error)=>{
-      console.log(error)
-      res.status(500).send({
-        message: "Error adding to favorites.",
-        error
-      })
-    })
-  }
-
-});
-
-// Delete all favorites of user. Not sure how it decides which user it is. 
 app.delete("/deletefavorites", async (req, res) => {
+  console.log(`Method ${req.method}, endpoint /deleteFavorites`)
   try {
     // Delete all documents in the "favorites" collection
     await User.updateMany({}, { $set: { favorites: [] } });
@@ -399,17 +211,19 @@ app.delete("/deletefavorites", async (req, res) => {
 });
 
 app.delete('/delete',async (req,res)=>{
+  console.log(`Method ${req.method}, endpoint /delete`)
   try {
     await mySchemas.movies.deleteMany()
-    res.status(200).json({ message: 'Deleted All movies!' });
+    res.status(200).json({ message: 'Deleted all movies!' });
     console.log('Deleted All movies');
   } catch (err) {
-    console.error('ERROR DELETING MOVIES ');
+    console.error('ERROR FETCHING GOALS');
     console.error(err.message);
-    res.status(500).json({ message: 'Failed to delete Movies.' });
+    res.status(500).json({ message: 'Failed to delete goal.' });
   }
 })
 app.delete('/deleteUsers',async (req,res)=>{
+  console.log(`Method ${req.method}, endpoint: /deleteUsers`)
   try {
     await User.deleteMany()
     res.status(200).json({ message: 'Deleted Users!' });
@@ -423,6 +237,7 @@ app.delete('/deleteUsers',async (req,res)=>{
 
 
 app.get('/actor', async (req,res)=>{
+  console.log(`Method ${req.method}, endpoint /actor`)
   try {
     const movieData = await mySchemas.movies.findOne({cast:'Stephan James'});
     res.status(200).json({
@@ -439,7 +254,7 @@ app.get('/actor', async (req,res)=>{
 
 
 
-app.get("/genre",verifyJWT, async (req, res) => {
+app.get("/genre",auth, async (req, res) => {
   console.log("TRYING TO FETCH GOALS");
   try {
     const genres = await mySchemas.genre.find();
@@ -459,20 +274,20 @@ app.get("/genre",verifyJWT, async (req, res) => {
   }
 });
 
+
 mongoose.connection.once('open', ()=>{
   console.log('Connected to mongoDB')
   app.listen(PORT, ()=>{
-  console.log(`Server running on port ${PORT}`);
-  // console.log(process.env.NODE_ENV)
+    console.log(`Server running on port ${PORT}`);
+    // console.log(process.env.NODE_ENV)
   })
-  
+
 })
 
 mongoose.connection.on('error', err => {
   console.log(err)
   logEvents(`${err.no}: ${err.code}\t${err.syscall}\t${err.hostname}`, 'mongoErrLog.log')
 })
-
 // mongoose.connect(
 //     `mongodb://${process.env.MONGODB_USERNAME}:${process.env.MONGODB_PASSWORD}@mongodb:27017/course-goals?authSource=admin`,
 //     {
@@ -492,5 +307,3 @@ mongoose.connection.on('error', err => {
 //   );
 
  module.exports = {app,mongoose}
-
-//  mongodb+srv://movieDBadmin:<password>@cluster0.qkit6ht.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0

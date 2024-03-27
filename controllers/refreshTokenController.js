@@ -3,17 +3,18 @@ const jwt = require('jsonwebtoken');
 
 const handleRefreshToken = async (req, res) => {
     const cookies = req.cookies;
-    if (!cookies?.jwt) return res.sendStatus(401);
+    if (!cookies?.jwt) return res.status(401).json({message: 'Unauthorized'});
     const refreshToken = cookies.jwt;
 
     const foundUser = await User.findOne({ refreshToken }).exec();
-    if (!foundUser) return res.sendStatus(403); //Forbidden 
+    if (!foundUser) return res.sendStatus(403); //Forbidden
+    console.log(`Method ${req.method}, Endpoint: /refresh`)
     // evaluate jwt 
     jwt.verify(
         refreshToken,
         'REFRESH-TOKEN',
         (err, decoded) => {
-            if (err || foundUser.username !== decoded.username) return res.sendStatus(403);
+            if (err || foundUser.username !== decoded.username) return res.status(403).json({ message: 'Forbidden' })
             const token = jwt.sign(
                 {
                     userId: foundUser._id,
@@ -23,7 +24,7 @@ const handleRefreshToken = async (req, res) => {
                 'RANDOM-TOKEN',
                 { expiresIn: '10min' }
             );
-            res.json({token })
+            res.json({token }) // added  username:foundUser.username,
         }
     );
 }
